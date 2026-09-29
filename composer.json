@@ -1,7 +1,6 @@
 {
     "name": "heindrich/hit",
     "description": "HIT Base Library",
-    "version": "2.1.0",
     "authors": [
         {
             "name": "Indrek Pärnamaa",
