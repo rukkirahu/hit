@@ -1,0 +1,13 @@
+{
+    "$schema": "/phpactor.schema.json",
+    "indexer.exclude_patterns": [
+        "\/vendor\/**\/.*",
+        "\/tests\/**\/.*"
+    ],
+    "language_server_phpstan.enabled": false,
+    "language_server.diagnostic_exclude_paths": [
+        "\/vendor\/**\/.*"
+    ],
+    "language_server.diagnostics_on_update": false,
+    "language_server_highlight.enabled": false
+}
