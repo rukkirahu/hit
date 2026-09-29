@@ -11,10 +11,11 @@ use Hit\View\Component\Html;
  * PicoCss HTML output.
  */
 class PicoFormBuilder extends AbstractFormBuilder {
+	/** @param null|callable(array): string $renderControl */
 	protected function wrapField(array $attributes, ?string $label, ?string $error, ?callable $renderControl = null): string {
 		// 1. Extract and unset builder-specific wrapper attributes
-		$addon = $attributes['addon'] ?? null;
-		$icon = $attributes['icon'] ?? null;
+		$addon = (string) ($attributes['addon'] ?? '');
+		$icon = (string) ($attributes['icon'] ?? '');
 		$readonly = $attributes['readonly'] ?? null;
 		$disabled = $attributes['disabled'] ?? false ? ' disabled' : '';
 		unset($attributes['addon'], $attributes['icon']);
@@ -57,8 +58,8 @@ class PicoFormBuilder extends AbstractFormBuilder {
 
 	protected function wrapCheckable(array $attributes, ?string $label): string {
 		$labelHtml = $label !== null ? Html::h($label) : '';
-		$idAttr = Html::h($attributes['id'] ?? $attributes['name']);
-		$nameAttr = Html::h($attributes['name']);
+		$idAttr = Html::h((string) ($attributes['id'] ?? $attributes['name']));
+		$nameAttr = Html::h((string) $attributes['name']);
 
 		return <<<HTML
 			    <input type="hidden" name="{$nameAttr}" value="0">

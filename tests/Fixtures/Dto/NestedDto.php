@@ -17,9 +17,6 @@ final readonly class NestedDto extends Dto {
 	}
 
 	public function with(...$args): self {
-		return new self(
-			id: (int) ($args['id'] ?? $this->id),
-			child: $args['child'] ?? $this->child,
-		);
+		return new self(id: (int) ($args['id'] ?? $this->id), child: $args['child'] ?? $this->child);
 	}
 }

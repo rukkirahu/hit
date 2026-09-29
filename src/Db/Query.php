@@ -30,6 +30,8 @@ class Query {
 
 	public bool $distinct = false;
 
+	public bool $ignore = false;
+
 	public ?Order $Order = null;
 
 	public ?Group $Group = null;
@@ -99,6 +101,18 @@ class Query {
 	 */
 	public function distinct(bool $distinct = true): static {
 		$this->distinct = $distinct;
+
+		return $this;
+	}
+
+	/**
+	 * Render as INSERT/UPDATE/DELETE IGNORE (MySQL skips ignorable row errors
+	 * such as duplicate-key conflicts instead of aborting the statement).
+	 * Has no effect on SELECT.
+	 * @return $this
+	 */
+	public function ignore(bool $ignore = true): static {
+		$this->ignore = $ignore;
 
 		return $this;
 	}

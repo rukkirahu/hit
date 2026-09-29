@@ -62,7 +62,7 @@ class Ray {
 				continue;
 			}
 
-			$parts = explode('.', (string) $key);
+			$parts = explode('.', $key);
 
 			// walk a local cursor down each pass, leaving $array bound to the caller
 			$cursor = &$array;

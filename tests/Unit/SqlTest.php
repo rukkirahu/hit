@@ -198,6 +198,33 @@ test('insertRows builds a multi-row INSERT statement', function () {
 	expect($sql)->toBe('INSERT INTO `users` (`name`, `age`) VALUES (:v0, 5), (:v1, 6)');
 });
 
+test('insert builds an INSERT IGNORE statement when ignore is set', function () {
+	/** @var Tests\TestCase $this */
+	$query = sql_builder_query($this->createMock(PDO::class))->ignore();
+
+	$sql = Sql::insert(['name' => "'foo'", 'age' => 5], $query);
+
+	expect($sql)->toBe("INSERT IGNORE INTO `users` (`name`, `age`) VALUES ('foo', 5)");
+});
+
+test('insertRows builds an INSERT IGNORE statement when ignore is set', function () {
+	/** @var Tests\TestCase $this */
+	$query = sql_builder_query($this->createMock(PDO::class))->ignore();
+
+	$sql = Sql::insertRows([['name' => ':v0'], ['name' => ':v1']], $query);
+
+	expect($sql)->toBe('INSERT IGNORE INTO `users` (`name`) VALUES (:v0), (:v1)');
+});
+
+test('insert omits IGNORE again when the flag is turned off', function () {
+	/** @var Tests\TestCase $this */
+	$query = sql_builder_query($this->createMock(PDO::class))->ignore()->ignore(false);
+
+	$sql = Sql::insert(['name' => "'foo'"], $query);
+
+	expect($sql)->toBe("INSERT INTO `users` (`name`) VALUES ('foo')");
+});
+
 test('insertRows rejects different columns', function () {
 	/** @var Tests\TestCase $this */
 	$query = sql_builder_query($this->createMock(PDO::class));
@@ -244,6 +271,15 @@ test('update appends a LIMIT when present', function () {
 	expect($sql)->toBe("UPDATE `users` SET `name` = 'foo' WHERE `id` = 1 LIMIT 0, 5");
 });
 
+test('update builds an UPDATE IGNORE statement when ignore is set', function () {
+	/** @var Tests\TestCase $this */
+	$query = sql_builder_query($this->createMock(PDO::class))->where(['id' => 1])->ignore();
+
+	$sql = Sql::update(['name' => "'foo'"], $query);
+
+	expect($sql)->toBe("UPDATE IGNORE `users` SET `name` = 'foo' WHERE `id` = 1");
+});
+
 test('update throws without a WHERE condition', function () {
 	/** @var Tests\TestCase $this */
 	$query = sql_builder_query($this->createMock(PDO::class));
@@ -258,6 +294,13 @@ test('delete builds a DELETE statement with a WHERE clause', function () {
 	$query = sql_builder_query($this->createMock(PDO::class))->where(['id' => 1]);
 
 	expect(Sql::delete($query))->toBe('DELETE FROM `users` WHERE `id` = 1');
+});
+
+test('delete builds a DELETE IGNORE statement when ignore is set', function () {
+	/** @var Tests\TestCase $this */
+	$query = sql_builder_query($this->createMock(PDO::class))->where(['id' => 1])->ignore();
+
+	expect(Sql::delete($query))->toBe('DELETE IGNORE FROM `users` WHERE `id` = 1');
 });
 
 test('delete throws without a WHERE condition', function () {

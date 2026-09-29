@@ -215,7 +215,10 @@ abstract class AbstractFormBuilder implements FormBuilderInterface {
 	// Theme hooks — override these in a subclass to change how fields look
 	// ------------------------------------------------------------------
 
-	/** Wraps a label + input + error into the theme's field markup (e.g. a Bootstrap `.mb-3` div). */
+	/**
+	 * Wraps a label + input + error into the theme's field markup (e.g. a Bootstrap `.mb-3` div).
+	 * @param null|callable(array): string $renderControl
+	 */
 	abstract protected function wrapField(array $attributes, ?string $label, ?string $error, ?callable $renderControl = null): string;
 
 	/** Wraps a checkbox/radio input + its label into the theme's markup (e.g. Bootstrap `.form-check`). */

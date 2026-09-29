@@ -29,12 +29,12 @@ class Inflector {
 	 */
 	protected static function cache(string $type, string $key, string $value = ''): string {
 		if ($value) {
-			self::$cache[$type][$key] = (string) $value;
+			self::$cache[$type][$key] = $value;
 
 			return $value;
 		}
 
-		return (string) (self::$cache[$type][$key] ?? '');
+		return self::$cache[$type][$key] ?? '';
 	}
 
 	/**

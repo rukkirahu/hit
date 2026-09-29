@@ -84,8 +84,8 @@ class Translator {
 			return [];
 		}
 
-		/** @var array<string, string> $typed */
-		return array_filter($data, fn($v) => is_string($v));
+		/** @var array<string, string> */
+		return array_filter($data, static fn($v, $k) => is_string($v) && is_string($k), ARRAY_FILTER_USE_BOTH);
 	}
 
 	private function saveAll(): void {

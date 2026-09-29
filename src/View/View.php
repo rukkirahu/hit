@@ -46,6 +46,6 @@ class View {
 			],
 			['', '', ">\n<", '><', "\n"],
 			$content,
-		);
+		) ?? $content;
 	}
 }

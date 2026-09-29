@@ -50,7 +50,7 @@ class Validator {
 					continue;
 				}
 
-				if (!self::callRule($method, $value, $arg)) {
+				if (!self::callRule((string) $method, $value, $arg)) {
 					$invalid[$name] = "{$prefix}.{$name}.{$method}";
 
 					break;
@@ -66,24 +66,19 @@ class Validator {
 			throw new \InvalidArgumentException("Unknown validation rule: {$method}");
 		}
 
-		if ($arg === true) {
-			return Validation::$method($value);
+		$args = [];
+
+		if ($arg !== true) {
+			$parameters = new ReflectionMethod(Validation::class, $method)->getParameters();
+
+			if (count($parameters) > 1) {
+				$secondType = $parameters[1]->getType();
+				$expectsArray = $secondType instanceof ReflectionNamedType && $secondType->getName() === 'array';
+				$args = is_array($arg) && !$expectsArray ? $arg : [$arg];
+			}
 		}
 
-		$reflection = new ReflectionMethod(Validation::class, $method);
-		$parameters = $reflection->getParameters();
-
-		if (count($parameters) <= 1) {
-			return Validation::$method($value);
-		}
-
-		$secondType = $parameters[1]->getType();
-		$expectsArray = $secondType instanceof ReflectionNamedType && $secondType->getName() === 'array';
-
-		if (is_array($arg) && !$expectsArray) {
-			return Validation::$method($value, ...$arg);
-		}
-
-		return Validation::$method($value, $arg);
+		/** @var bool */
+		return Validation::$method($value, ...$args);
 	}
 }

@@ -144,8 +144,6 @@ class Container implements ContainerInterface {
 
 	/**
 	 * Resolve a class using Reflection or cache.
-	 *
-	 * @param class-string $id
 	 */
 	private function resolve(string $id): object {
 		if (!class_exists($id)) {
@@ -154,6 +152,8 @@ class Container implements ContainerInterface {
 			}
 			throw new NotFoundException("Class or service '{$id}' not found.");
 		}
+
+		/** @var class-string $id */
 
 		// Circular dependency detection
 		if (isset($this->resolving[$id])) {

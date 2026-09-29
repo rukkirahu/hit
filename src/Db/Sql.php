@@ -167,7 +167,7 @@ class Sql {
 	public static function orders(array $orders, string $table = ''): array {
 		$out = [];
 		foreach ($orders as $field => $direction) {
-			$name = str_contains((string) $field, '`') ? (string) $field : self::name($table, $field);
+			$name = str_contains($field, '`') ? $field : self::name($table, $field);
 			$out[] = $name . ' ' . strtoupper($direction);
 		}
 
@@ -206,7 +206,16 @@ class Sql {
 			$values[] = '(' . implode(', ', array_values($row)) . ')';
 		}
 
-		return 'INSERT INTO ' . self::quote($query->table) . ' (' . implode(', ', $columns) . ') VALUES ' . implode(', ', $values);
+		return (
+			'INSERT '
+			. ($query->ignore ? 'IGNORE ' : '')
+			. 'INTO '
+			. self::quote($query->table)
+			. ' ('
+			. implode(', ', $columns)
+			. ') VALUES '
+			. implode(', ', $values)
+		);
 	}
 
 	/**
@@ -222,7 +231,14 @@ class Sql {
 			$sets[] = self::quote($column) . ' = ' . $value;
 		}
 
-		$sql = 'UPDATE ' . self::quote($query->table) . ' SET ' . implode(', ', $sets) . ' WHERE ' . implode(' AND ', $query->Where->build(''));
+		$sql =
+			'UPDATE '
+			. ($query->ignore ? 'IGNORE ' : '')
+			. self::quote($query->table)
+			. ' SET '
+			. implode(', ', $sets)
+			. ' WHERE '
+			. implode(' AND ', $query->Where->build(''));
 
 		if ($query->Limit !== null) {
 			$sql .= ' LIMIT ' . $query->Limit->offset . ', ' . $query->Limit->limit;
@@ -236,7 +252,7 @@ class Sql {
 			throw new \Exception('Delete requires a WHERE condition');
 		}
 
-		return 'DELETE FROM ' . self::quote($query->table) . ' WHERE ' . implode(' AND ', $query->Where->build(''));
+		return 'DELETE ' . ($query->ignore ? 'IGNORE ' : '') . 'FROM ' . self::quote($query->table) . ' WHERE ' . implode(' AND ', $query->Where->build(''));
 	}
 
 	public static function select(Query $query): string {

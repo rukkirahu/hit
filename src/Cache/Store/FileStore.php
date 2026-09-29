@@ -103,6 +103,6 @@ class FileStore implements StoreInterface {
 	 */
 	private static function sanitizeKey(string $key): string {
 		//let's try to keep readable file names and ability to create subdirectories in cache dir with keys like 'model/name'
-		return (string) str_replace("\\", '/', preg_replace('/[^A-Z0-9.@\-_\/]/iu', '_', $key) ?: '');
+		return str_replace("\\", '/', preg_replace('/[^A-Z0-9.@\-_\/]/iu', '_', $key) ?: '');
 	}
 }

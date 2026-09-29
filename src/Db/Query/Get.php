@@ -40,7 +40,9 @@ class Get extends Query {
 				$data = Ray::undot($row)[$dto::PREFIX] ?? false;
 				if (is_array($data)) {
 					/** @var T $result */
-					return $dto->with(...$data);
+					$result = $dto->with(...$data);
+
+					return $result;
 				}
 				throw new \Exception('Data is not iterable');
 			}

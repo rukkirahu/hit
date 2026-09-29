@@ -128,7 +128,24 @@ $rows = new Update($domain, new User())
 
 // Delete — returns bool
 new Delete($domain, new User(id: $id))->where(['id' => $id])->exec();
+
+// Any write can be rendered with MySQL's IGNORE modifier
+$id   = new Insert($domain, new User(name: 'Bob'))->ignore()->exec();
+$rows = $domain->insertChunks($users)->ignore()->exec();
+$rows = new Update($domain, new User(id: $id, name: 'Bobby'))->ignore()->exec();
+new Delete($domain, new User(id: $id))->where(['id' => $id])->ignore()->exec();
 ```
+
+`ignore()` renders `INSERT IGNORE` / `UPDATE IGNORE` / `DELETE IGNORE`: MySQL
+skips rows that raise ignorable errors (duplicate-key conflicts, bad
+conversions, ...) instead of aborting the statement — it is *not* an upsert
+(`ON DUPLICATE KEY UPDATE`). Caveats:
+
+- An ignored `Insert` row produces no auto-increment id, so `exec()` returns
+  `0` (not `false` — that still means the statement failed).
+- `InsertChunks` reports the true `rowCount()`, but `afterInsert()` still fires
+  for every DTO, including rows MySQL skipped.
+- `ignore()` has no effect on SELECT queries.
 
 `insertChunks()` accepts any `iterable<Dto>` and executes one multi-row statement per chunk. All DTOs in a chunk must produce the same columns after `beforeInsert()`; primary IDs are omitted. The query calls insert lifecycle hooks for each DTO but does not manage transactions, so wrap it with `Database::begin()` / `commit()` / `rollback()` when all chunks must be atomic.
 

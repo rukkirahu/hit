@@ -11,6 +11,7 @@ use Hit\View\Component\Html;
  * Useful as a default, or as a base to hand-theme with your own CSS.
  */
 class PlainFormBuilder extends AbstractFormBuilder {
+	/** @param null|callable(array): string $renderControl */
 	protected function wrapField(array $attributes, ?string $label, ?string $error, ?callable $renderControl = null): string {
 		$inputHtml = $renderControl ? $renderControl($attributes) : '';
 		$html = $label !== null ? '<label>' . Html::h($label) . '</label>' . $inputHtml : $inputHtml;
@@ -30,7 +31,7 @@ class PlainFormBuilder extends AbstractFormBuilder {
 
 	protected function applyFieldStateClasses(array $attributes, ?string $error, bool $isSelect = false): array {
 		if ($error !== null) {
-			$attributes['class'] = trim(($attributes['class'] ?? '') . ' is-invalid');
+			$attributes['class'] = trim((string) ($attributes['class'] ?? '') . ' is-invalid');
 		}
 
 		return $attributes;
