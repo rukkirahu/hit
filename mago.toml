@@ -36,17 +36,17 @@ too-many-methods = { enabled = false }
 # kan-defect = { enabled = false }
 
 [analyzer]
-find-unused-definitions = true
-find-unused-expressions = false
-analyze-dead-code = false
-memoize-properties = true
-allow-possibly-undefined-array-keys = true
-check-throws = false
-check-missing-override = false
-find-unused-parameters = false
-strict-list-index-checks = false
-no-boolean-literal-comparison = false
-check-missing-type-hints = false
-register-super-globals = true
+# find-unused-definitions = true
+# find-unused-expressions = false
+# analyze-dead-code = false
+# memoize-properties = true
+# allow-possibly-undefined-array-keys = true
+# check-throws = false
+# check-missing-override = false
+# find-unused-parameters = false
+# strict-list-index-checks = false
+# no-boolean-literal-comparison = false
+# check-missing-type-hints = false
+# register-super-globals = true
 # less-specific-argument = false
 # less-specific-nested-argument-type = false

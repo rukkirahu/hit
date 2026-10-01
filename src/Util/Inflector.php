@@ -25,16 +25,16 @@ class Inflector {
 	 * @param string $type Inflection type
 	 * @param string $key Original value
 	 * @param string $value Inflected value
-	 * @return string Inflected value, from cache
+	 * @return null|string Inflected value, from cache
 	 */
-	protected static function cache(string $type, string $key, string $value = ''): string {
+	protected static function cache(string $type, string $key, string $value = ''): ?string {
 		if ($value) {
 			self::$cache[$type][$key] = $value;
 
 			return $value;
 		}
 
-		return self::$cache[$type][$key] ?? '';
+		return self::$cache[$type][$key] ?? null;
 	}
 
 	/**
@@ -67,7 +67,7 @@ class Inflector {
 	 */
 	public static function camelize(string $str, array $splitPattern = ['.', '_', '-']): string {
 		$result = self::cache(__FUNCTION__, $str);
-		if ($result === '') {
+		if ($result === null) {
 			$result = str_replace(' ', '', ucwords(str_replace($splitPattern, ' ', $str))) ?? $str;
 			$result and self::cache(__FUNCTION__, $str, $result);
 		}
@@ -83,7 +83,7 @@ class Inflector {
 	 */
 	public static function underscore(string $str): string {
 		$result = self::cache(__FUNCTION__, $str);
-		if ($result === '') {
+		if ($result === null) {
 			$result = preg_replace(['/([A-Z]+)([A-Z][a-z])/', '/([a-z\d])([A-Z])/'], ['\\1_\\2', '\\1_\\2'], $str) ?? $str;
 			$result and ($result = str_replace('__', '_', strtolower($result)));
 			$result and self::cache(__FUNCTION__, $str, $result);
@@ -99,7 +99,7 @@ class Inflector {
 	 * @return string
 	 */
 	public static function humanize(string $str): string {
-		return self::cache(__FUNCTION__, $str) ?: self::cache(__FUNCTION__, $str, ucfirst(str_replace('_', ' ', self::underscore($str))));
+		return self::cache(__FUNCTION__, $str) ?? self::cache(__FUNCTION__, $str, ucfirst(str_replace('_', ' ', self::underscore($str)))) ?? $str;
 	}
 
 	/**
@@ -110,7 +110,7 @@ class Inflector {
 	 */
 	public static function singularize(string $str): string {
 		$result = self::cache(__FUNCTION__, $str);
-		if ($result === '') {
+		if ($result === null) {
 			$replacements = [
 				'/(s)tatuses$/i' => '\1\2tatus',
 				'/^(.*)(menu)s$/i' => '\1\2',
@@ -149,7 +149,7 @@ class Inflector {
 	 * @return string
 	 */
 	public static function urlify(string $str): string {
-		return preg_replace('/[^A-Za-z0-9_]+/u', '', $str) ?: '';
+		return preg_replace('/[^A-Za-z0-9_]+/u', '', $str) ?? $str;
 	}
 
 	/**
@@ -230,7 +230,7 @@ class Inflector {
 				$data = 'callable: ' . $data; //str_replace('\\', "&#92;", $data); // keep backslashes
 				break;
 			case is_array($data):
-				$data = 'array: ' . json_encode($data, $pretty ? JSON_PRETTY_PRINT : 0);
+				$data = 'array: ' . (string) json_encode($data, $pretty ? JSON_PRETTY_PRINT : 0);
 				break;
 			// @mago-expect analysis:invalid-operand
 			case is_object($data):
@@ -238,7 +238,7 @@ class Inflector {
 					'object['
 					. get_class($data)
 					. ']: '
-					. (is_callable([$data, '__toString']) ? $data : json_encode((array) $data, $pretty ? JSON_PRETTY_PRINT : 0));
+					. (is_callable([$data, '__toString']) ? $data : (string) json_encode($data, $pretty ? JSON_PRETTY_PRINT : 0));
 				break;
 			case is_bool($data):
 				$data = 'boolean: ' . ($data ? 'TRUE' : 'FALSE');
@@ -255,15 +255,14 @@ class Inflector {
 			case is_string($data):
 				// @phpstan-ignore logicalAnd.resultUnused
 				strlen($data) > 500 and ($data = substr($data, 0, strrpos(substr($data, 0, 500), ' ') ?: 500) . '...');
-				$data = preg_replace('/\s+/', ' ', $pretty ? html_entity_decode(str_replace('&nbsp;', ' ', $data)) : $data);
+				$data = preg_replace('/\s+/', ' ', $pretty ? html_entity_decode((string) str_replace('&nbsp;', ' ', $data)) : $data);
 				break;
 			default:
 				$data = gettype($data);
 				break;
 		}
 
-		// @mago-expect analysis:possibly-null-argument
-		return $pretty ? (strval(preg_replace('/\\\u([0-9A-Fa-f]{4})/', '&#x$1;', $data)) ?: '<empty>') : (string) $data;
+		return $pretty ? (string) (preg_replace('/\\\u([0-9A-Fa-f]{4})/', '&#x$1;', (string) $data) ?? '<empty>') : (string) $data;
 	}
 
 	/**
@@ -271,6 +270,6 @@ class Inflector {
 	 * @return bool
 	 */
 	public static function isPlural(string $str): bool {
-		return $str == self::pluralize($str);
+		return $str === self::pluralize($str);
 	}
 }

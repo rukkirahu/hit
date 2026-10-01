@@ -25,7 +25,7 @@ class Validation {
 	 * @return boolean Success
 	 */
 	public static function required(mixed $data): bool {
-		if ($data === null || $data === '' || $data === 0 && $data !== '0') {
+		if ($data === null || $data === '' || $data === 0) {
 			return false;
 		}
 
@@ -124,7 +124,7 @@ class Validation {
 					return checkdnsrr($regs[1] . '.', 'MX');
 				}
 
-				return $regs[1] != gethostbyname($regs[1]);
+				return $regs[1] !== gethostbyname($regs[1]);
 			}
 
 			return false;
@@ -246,8 +246,8 @@ class Validation {
 		if (!is_numeric($data)) {
 			return false;
 		}
-		$lower = (int) $options[0];
-		$upper = (int) $options[1];
+		$lower = (int) ($options[0] ?? 0);
+		$upper = (int) ($options[1] ?? 0);
 		if ($upper <= $lower) {
 			throw new \Exception('upper must be greater than lower');
 		}
@@ -257,16 +257,12 @@ class Validation {
 
 	/**
 	 * Checks if a value is in a given list.
-	 * @param mixed $data Value to check
+	 * @param int|string $data Value to check
 	 * @param array<mixed> $list List to check against
 	 * @return boolean Success
 	 */
-	public static function inList(mixed $data, array $list): bool {
-		if (!is_scalar($data)) {
-			return false;
-		}
-
-		return in_array($data, $list) || array_key_exists($data, $list);
+	public static function inList(int|string $data, array $list): bool {
+		return in_array($data, $list, true) || array_key_exists($data, $list);
 	}
 
 	/**
@@ -307,7 +303,6 @@ class Validation {
 			return false;
 		}
 
-		//TODO: update regexp
 		return self::_check($data, '/^[0-9\-+ ]{7,15}$/');
 	}
 

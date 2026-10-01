@@ -61,7 +61,7 @@ class Value {
 		$name = '';
 		for ($position = 0; $position < $length; $position++) {
 			$name = chr(97 + ($index % 26)) . $name;
-			$index = intdiv($index, 26);
+			$index = intdiv((int) $index, 26);
 		}
 
 		return ':' . $name;

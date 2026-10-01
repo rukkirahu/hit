@@ -192,9 +192,8 @@ class Ray {
 	 * @param array<string, mixed> $data
 	 */
 	public static function set(array &$data, string $keys, mixed $value = null): void {
-		if (is_string($keys)) {
-			$keys = explode('.', $keys);
-		}
+		$keys = explode('.', $keys);
+
 		$key = array_pop($keys);
 		// /** @var array<string, mixed> &$ref */
 		$ref = &$data;
@@ -212,7 +211,7 @@ class Ray {
 	/**
 	 * Return array with values from source under renamed keys
 	 * @param array<string,mixed> $array
-	 * @param array<int|string,mixed> $map
+	 * @param array<int|string,null|string|callable(mixed,mixed):array{string,mixed}> $map
 	 * @return array<string,mixed>
 	 * @example - Ray::remap($array, ['id'=>'order_id','name'=>'customer_name','price'], true)
 	 */
@@ -223,7 +222,7 @@ class Ray {
 				continue;
 			}
 
-			if (!is_string($destKey) && is_callable($destKey)) {
+			if (is_callable($destKey)) {
 				list($destKey, $value) = (array) $destKey($key, $array);
 			}
 			else {

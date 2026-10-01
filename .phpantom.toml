@@ -1,0 +1,27 @@
+#:schema https://github.com/PHPantom-dev/phpantom_lsp/raw/main/config-schema.json
+
+# PHPantom configuration: only add settings you want to override.
+# Editors with TOML schema support (Zed, VS Code + Even Better TOML, Neovim)
+# provide autocomplete and hover documentation for all available options.
+# Full reference: https://phpantom-dev.github.io/phpantom_lsp/configuration/
+
+[diagnostics]
+# Small codebase: project-wide sweep is cheap and also triggers the
+# workspace-external Mago lint/analyze pass after indexing.
+workspace = true
+
+[[diagnostics.ignore]]
+path = "tests/**"
+
+[formatting]
+# Neither tool is in require-dev; the built-in formatter is mago-formatter and
+# honours mago.toml [formatter] (tabs, 160 width). These pins just prevent any
+# future transitive php-cs-fixer/phpcbf install from taking over formatting.
+php-cs-fixer = ""
+phpcbf = ""
+
+[laravel.schema]
+enabled = false
+
+[laravel.migrations]
+enabled = false
