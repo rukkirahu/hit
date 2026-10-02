@@ -7,6 +7,8 @@ namespace Tests\Unit;
 use Hit\Attribute\Accept;
 use Hit\Attribute\Acl;
 use Hit\Router\Discovery;
+use Hit\Router\Routes\RouteTable;
+use InvalidArgumentException;
 use RuntimeException;
 use Tests\Fixtures\Action\Admin\NestedAction;
 use Tests\Fixtures\Action\MultiRouteAction;
@@ -14,106 +16,94 @@ use Tests\Fixtures\Action\PublicAction;
 use Tests\Fixtures\Action\SampleGetAction;
 use Tests\Support\FakeStore;
 
-function fixturesRoot(): string {
+function fixtures_root(): string {
 	return dirname(__DIR__) . '/Fixtures';
+}
+
+function discovered_routes(RouteTable $table, string $method): array {
+	return iterator_to_array($table->forMethod($method));
 }
 
 // ---------------------------------------------------------------------------
 // Basic discovery
 // ---------------------------------------------------------------------------
 
-test('discovers a route from an attribute-decorated action class', function () {
-	$discovery = new Discovery(fixturesRoot(), 'Tests\\Fixtures', new FakeStore(), development: true);
-	$routes = $discovery->getRoutes();
+test('discovers a typed route definition from an action attribute', function () {
+	$table = new Discovery(fixtures_root(), 'Tests\\Fixtures', development: true)->discover();
+	$route = discovered_routes($table, 'GET')['sample'];
 
-	expect($routes['GET']['sample']['action'])->toBe(SampleGetAction::class);
-	expect($routes['GET']['sample']['accept'])->toBe(Accept::HTML);
-	expect($routes['GET']['sample']['acl'])->toBe(Acl::USER);
+	expect($route->action)
+		->toBe(SampleGetAction::class)
+		->and($route->accept)
+		->toBe(Accept::HTML)
+		->and($route->acl)
+		->toBe(Acl::USER);
 });
 
-test('discovery throws when a route URI has a leading slash', function () {
+test('discovery rejects a route URI with a leading slash', function () {
 	$root = dirname(__DIR__) . '/FixturesBadRoute';
 
-	expect(fn() => new Discovery($root, 'Tests\\FixturesBadRoute', new FakeStore(), development: true))
-		->toThrow(RuntimeException::class);
+	expect(fn() => new Discovery($root, 'Tests\\FixturesBadRoute', development: true)->discover())
+		->toThrow(InvalidArgumentException::class);
 });
 
 test('discovers nested action classes in subdirectories', function () {
-	$discovery = new Discovery(fixturesRoot(), 'Tests\\Fixtures', new FakeStore(), development: true);
-	$routes = $discovery->getRoutes();
+	$table = new Discovery(fixtures_root(), 'Tests\\Fixtures', development: true)->discover();
 
-	expect($routes['GET']['admin/nested']['action'])->toBe(NestedAction::class);
+	expect(discovered_routes($table, 'GET')['admin/nested']->action)->toBe(NestedAction::class);
 });
 
-test('action without an Acl attribute defaults to Acl::NONE', function () {
-	$discovery = new Discovery(fixturesRoot(), 'Tests\\Fixtures', new FakeStore(), development: true);
-	$routes = $discovery->getRoutes();
+test('route ACL defaults to Acl NONE', function () {
+	$table = new Discovery(fixtures_root(), 'Tests\\Fixtures', development: true)->discover();
+	$route = discovered_routes($table, 'GET')['public'];
 
-	expect($routes['GET']['public']['action'])->toBe(PublicAction::class);
-	expect($routes['GET']['public']['acl'])->toBe(Acl::NONE);
+	expect($route->action)->toBe(PublicAction::class)->and($route->acl)->toBe(Acl::NONE);
 });
 
-// ---------------------------------------------------------------------------
-// Repeatable route attributes (regression: previously only the last one
-// survived because routes were only written once, after the attribute loop)
-// ---------------------------------------------------------------------------
+test('discovers a non-GET action route', function () {
+	$table = new Discovery(fixtures_root(), 'Tests\\Fixtures', development: true)->discover();
 
-test('a class with multiple route attributes registers all of them', function () {
-	$discovery = new Discovery(fixturesRoot(), 'Tests\\Fixtures', new FakeStore(), development: true);
-	$routes = $discovery->getRoutes();
-
-	expect($routes['GET']['multi-get']['action'])->toBe(MultiRouteAction::class);
-	expect($routes['POST']['multi-post']['action'])->toBe(MultiRouteAction::class);
+	expect(discovered_routes($table, 'POST')['multi-post']->action)->toBe(MultiRouteAction::class);
 });
 
-// ---------------------------------------------------------------------------
-// getAclFilterRoutes (regression: public/acl=NONE routes used to be
-// excluded entirely because "0 & anything" is always falsy)
-// ---------------------------------------------------------------------------
+test('an action cannot declare multiple route attributes', function () {
+	$root = dirname(__DIR__) . '/FixturesMultipleRoutes';
 
-test('getAclFilterRoutes keeps public routes regardless of caller acl', function () {
-	$discovery = new Discovery(fixturesRoot(), 'Tests\\Fixtures', new FakeStore(), development: true);
-
-	$filtered = $discovery->getAclFilterRoutes(Acl::GUEST);
-
-	expect($filtered['GET'])->toHaveKey('public');
-});
-
-test('getAclFilterRoutes excludes routes the caller acl does not satisfy', function () {
-	$discovery = new Discovery(fixturesRoot(), 'Tests\\Fixtures', new FakeStore(), development: true);
-
-	$filtered = $discovery->getAclFilterRoutes(Acl::GUEST);
-
-	expect($filtered['GET'])->not->toHaveKey('sample');
-});
-
-test('getAclFilterRoutes includes routes the caller acl satisfies', function () {
-	$discovery = new Discovery(fixturesRoot(), 'Tests\\Fixtures', new FakeStore(), development: true);
-
-	$filtered = $discovery->getAclFilterRoutes(Acl::USER);
-
-	expect($filtered['GET'])->toHaveKey('sample');
-	expect($filtered['GET'])->toHaveKey('public');
+	expect(fn() => new Discovery($root, 'Tests\\FixturesMultipleRoutes', development: true)->discover())
+		->toThrow(RuntimeException::class);
 });
 
 // ---------------------------------------------------------------------------
-// Cache skip regression (bug #1): routes must survive a rebuild even when
-// the per-file "unchanged" skip path is taken.
+// Cache behavior
 // ---------------------------------------------------------------------------
 
-test('routes survive rediscovery when the routes cache is cleared but actions cache is not', function () {
+test('production discovery uses one cached route table after the first scan', function () {
 	$cache = new FakeStore();
+	$discovery = new Discovery(fixtures_root(), 'Tests\\Fixtures', $cache);
 
-	$first = new Discovery(fixturesRoot(), 'Tests\\Fixtures', $cache, development: false);
-	$firstRoutes = $first->getRoutes();
+	$first = $discovery->discover();
+	$second = $discovery->discover();
 
-	expect($firstRoutes['GET']['sample']['action'])->toBe(SampleGetAction::class);
+	expect($second->toArray())
+		->toBe($first->toArray())
+		->and($cache->gets)
+		->toBe(2)
+		->and($cache->sets)
+		->toBe(1);
+});
 
-	// Simulate the "routes" cache entry expiring/being cleared independently
-	// of the "actions" (per-class mtime) cache entry.
-	$cache->delete('routes');
+test('development discovery bypasses cache reads and writes', function () {
+	$cache = new FakeStore();
+	$discovery = new Discovery(fixtures_root(), 'Tests\\Fixtures', $cache, development: true);
 
-	$second = new Discovery(fixturesRoot(), 'Tests\\Fixtures', $cache, development: false);
+	$discovery->discover();
+	$discovery->discover();
 
-	expect($second->getRoutes())->toBe($firstRoutes);
+	expect($cache->gets)->toBe(0)->and($cache->sets)->toBe(0);
+});
+
+test('discovery works without a cache store', function () {
+	$table = new Discovery(fixtures_root(), 'Tests\\Fixtures')->discover();
+
+	expect(discovered_routes($table, 'GET'))->toHaveKey('sample');
 });

@@ -1,175 +1,132 @@
 # Router
 
-Regex-based HTTP router. Matches a request method + path against a route table and returns a `Routing` result with the matched action, extracted parameters, and metadata.
+Regex-based HTTP router with attribute discovery, typed route definitions, request-time ACL filtering, and an optional production cache.
 
 ## Components
 
-- **`Route`** — matches a method/path against a route table. Instantiate with a route table and base path, then call `map()`.
-- **`Routing`** — immutable result object returned by `map()`. Carries the action name, captured params, default flag, and accept/acl metadata.
-- **`Discovery`** — builds a route table automatically by scanning a directory of Action classes decorated with route attributes (`#[Get]`, `#[Post]`, `#[Put]`, `#[Delete]`, `#[Acl]`).
-- **`RoutesInterface`** — legacy interface for manually declaring a route table as class constants. Superseded by `Discovery` for most use cases.
+- **`Discovery`** scans the application's `Action` directory and returns a `RouteTable`.
+- **`RouteTable`** contains validated `RouteDefinition` objects indexed by method and URI.
+- **`RouteDefinition`** describes one route: method, URI, action class, accept mask, and ACL mask.
+- **`Route`** matches a request method, path, and caller ACL against a `RouteTable`.
+- **`RouteMatch`** contains the matched definition and named regex parameters. Its `action`, `accept`, and `acl` properties forward to the definition.
 
-## Route table format
+## Action routes
 
-Regardless of how it's built (manually or via `Discovery`), a route table has this shape:
-
-```php
-[
-    'GET' => [
-        'users' => ['action' => 'users.list', 'accept' => 1, 'acl' => 0],
-        'users/(?<id>\d+)' => ['action' => 'users.show', 'accept' => 1, 'acl' => 0],
-    ],
-    'POST' => [
-        'users' => ['action' => 'users.create', 'accept' => 1, 'acl' => 1],
-    ],
-]
-```
-
-- **Key** — URL pattern (regex), **relative to the base path** (no leading slash). The full match target is `base . key`. Use named capture groups for parameters: `(?<id>\d+)`.
-- **Value** — array with `action` (string), `accept` (int bitmask), `acl` (int bitmask).
-
-> The base path must start **and** end with `/` (default `'/'`), so keys are relative. A key `users` under base `/api/` matches `/api/users`; a leading-slash key like `/users` will never match.
-
-## Usage
-
-### Option 1: Attribute-based discovery (recommended)
-
-Decorate Action classes with route attributes:
+Each Action class can declare at most one route attribute:
 
 ```php
 namespace App\Action;
 
-use Hit\Attribute\Get;
+use Hit\Attribute\Accept;
 use Hit\Attribute\Acl;
+use Hit\Attribute\Get;
 
-#[Get('users/(?<id>\d+)')]
-#[Acl(Acl::USER)]
-class ShowUser {
-    // ...
-}
+#[Get('users/(?<id>\d+)', accept: Accept::HTML, acl: Acl::USER)]
+final class GetUserAction {}
 ```
 
-Build the route table by scanning the `Action` directory:
+Available attributes are `#[Get]`, `#[Post]`, `#[Put]`, and `#[Delete]`. Their arguments are:
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `uri` | `string` | required | Regex path relative to the router base path |
+| `accept` | `int` | `Accept::HTML` | Accepted content-type bitmask |
+| `acl` | `int` | `Acl::NONE` | Required caller ACL bitmask |
+
+A URI must not start with `/`. An empty URI explicitly maps the router's base path:
+
+```php
+#[Get('')]
+final class HomeAction {}
+```
+
+Declaring multiple route attributes on one Action throws `RuntimeException`. Defining the same method and URI on multiple Actions also throws.
+
+## Discovery
 
 ```php
 use Hit\Router\Discovery;
+
+$table = new Discovery(
+	rootPath: __DIR__ . '/src',
+	namespace: 'App',
+	cache: $cache,
+	development: false,
+)->discover();
+```
+
+`rootPath` is the parent directory of `Action`, and `namespace` is the namespace corresponding to that root. Directories and PHP class files beneath `Action` must start with an uppercase letter.
+
+### Cache behavior
+
+Development mode always scans and reflects the source tree. It does not read or write cache entries.
+
+Production mode reads one complete, versioned route-table cache entry. A cache hit performs no filesystem scan or reflection. On a miss, Discovery scans all Actions and writes the complete table with a 30-day TTL. Passing `null` as the cache store disables caching.
+
+The cache key includes the discovery root and namespace, allowing multiple applications or source roots to share a store safely.
+
+## Matching
+
+```php
+use Hit\Attribute\Acl;
 use Hit\Router\Route;
 
-$discovery = new Discovery(
-    rootPath: __DIR__ . '/src',      // parent of the "Action" directory
-    namespace: 'App',                // base namespace matching the directory
-    cache: $cacher,                  // Hit\Cache\Store\StoreInterface, or null to skip caching
-    development: false,              // true disables the mtime-based skip cache
-);
+$router = new Route($table, '/api/');
+$match = $router->map('GET', '/api/users/42', Acl::USER);
 
-$route = new Route($discovery->getRoutes(), '/api/');
-$routing = $route->map('GET', '/api/users/42');
+$match?->action;       // App\Action\GetUserAction
+$match?->params;       // ['id' => '42']
+$match?->accept;       // forwarded from RouteDefinition
+$match?->acl;          // forwarded from RouteDefinition
+$match?->route->uri;   // users/(?<id>\d+)
 ```
 
-`Discovery` caches its output (`'routes'` and `'actions'` cache keys, 30-day TTL) so the filesystem/reflection scan only runs once per deploy. Unchanged files (by mtime) are skipped on subsequent scans, but their previously-discovered routes are still included in the result.
+`map()` returns `null` when the method or path does not match, or when the caller lacks the required ACL.
 
-#### Available attributes
-
-| Attribute | Target | Params |
-|---|---|---|
-| `Hit\Attribute\Get` | class | `uri`, `accept`, `acl` |
-| `Hit\Attribute\Post` | class | `uri`, `accept`, `acl` |
-| `Hit\Attribute\Put` | class | `uri`, `accept`, `acl` |
-| `Hit\Attribute\Delete` | class | `uri`, `accept`, `acl` |
-| `Hit\Attribute\Acl` | class (repeatable) | `acl` bitmask, e.g. `Acl::USER` |
-
-Route `uri`s must be **relative** (no leading slash) since they are matched relative to the base path; `Discovery` throws a `RuntimeException` if a URI starts with `/`.
-
-`Get`/`Post`/`Put`/`Delete` are `IS_REPEATABLE` — a single Action class can declare multiple routes (e.g. both `#[Get(...)]` and `#[Post(...)]`). `Acl` is read independently of route attribute order and defaults to `Acl::NONE` (public) if omitted.
-
-Filter a route table by an ACL bitmask (e.g. based on the current user's roles):
+Public routes use `Acl::NONE` and match regardless of the caller ACL. Protected routes match when the caller and route masks overlap:
 
 ```php
-$discovery->getAclFilterRoutes(Acl::USER | Acl::ADMIN);
+$routeAcl === Acl::NONE || ($callerAcl & $routeAcl) !== 0
 ```
 
-Routes with `acl === Acl::NONE` are always included (public); others are included only if `$acl & $route['acl']` is non-zero.
-
-### Option 2: Manual route table
-
-Implement `RoutesInterface` (or just build the array yourself):
-
-```php
-use Hit\Router\Routes\RoutesInterface;
-
-class AppRoutes implements RoutesInterface {
-    const BASE = '/';
-    const GET = [
-        'users' => ['action' => 'users.list', 'accept' => 1, 'acl' => 0],
-    ];
-    const POST = [];
-    const PUT = [];
-    const DELETE = [];
-}
-
-$route = new Route(['GET' => AppRoutes::GET, 'POST' => AppRoutes::POST], AppRoutes::BASE);
-```
-
-### Matching a request
-
-```php
-$routing = $route->map('GET', '/users/42');
-// $routing->action    → 'users.show'
-// $routing->params    → ['id' => '42']
-// $routing->isDefault → false
-// $routing->accept    → 1
-// $routing->acl       → 0
-```
-
-### Default route
-
-When a `GET` request path equals the base path (nothing left after stripping the base), the first route in the `GET` table is returned with `isDefault: true` and empty params. This provides a fallback for the site root.
-
-### Base path
-
-The base path must start and end with `/` (the constructor throws otherwise). It is stripped from the request path before matching and `preg_quote`-d when building the match regex, so metacharacters like `.` are treated literally. Route keys are relative to it.
-
-```php
-$route = new Route($routes, '/api/v2.0/');
-$route->map('GET', '/api/v2.0/users'); // matches the 'users' route
-```
+The base path must start and end with `/`. Route URIs are appended directly to it, so `users` under `/api/` matches `/api/users`.
 
 ## API
 
-### `new Route(array $routes = [], string $base = '/')`
+### `Discovery::discover(): RouteTable`
 
-Construct a router with a route table (keyed by HTTP method) and base path. `$base` must start and end with `/` (throws `Exception` otherwise), and route keys are relative to it.
+Returns the discovered or cached typed route table.
 
-### `Route::map(string $method, string $path): ?Routing`
+### `new Route(RouteTable $routes, string $base = '/')`
 
-Match a request. Returns a `Routing` on match, `null` on no match. Throws `Exception` if a route pattern produces an invalid regex.
+Creates a matcher and validates all route regexes. Invalid base paths or route regexes throw `InvalidArgumentException`.
 
-### `Routing` properties
+### `Route::map(string $method, string $path, int $acl = Acl::NONE): ?RouteMatch`
+
+Matches a request using the caller's ACL.
+
+### `RouteDefinition` properties
+
+| Property | Type |
+|---|---|
+| `method` | `string` |
+| `uri` | `string` |
+| `action` | `string` |
+| `accept` | `int` |
+| `acl` | `int` |
+
+### `RouteMatch` properties
 
 | Property | Type | Description |
 |---|---|---|
-| `action` | `string` | Action identifier for the matched route |
-| `params` | `array` | Named parameters extracted from regex capture groups |
-| `isDefault` | `bool` | True if matched via the default-route fallback (empty GET path) |
-| `accept` | `int` | Accept bitmask from the route config |
-| `acl` | `int` | ACL bitmask from the route config |
-
-### `new Discovery(string $rootPath, string $namespace, ?StoreInterface $cache = null, bool $development = false)`
-
-Scans `$rootPath . '/Action'` recursively for PHP classes (directories/files must start with an uppercase letter) and reflects their route/ACL attributes.
-
-- **`getRoutes(): array`** — the discovered route table, same shape as above.
-- **`getAclFilterRoutes(int $acl): array`** — route table filtered to routes accessible with the given ACL bitmask (public routes always included).
-- **`getActions(): array`** — per-class cache metadata (file mtime + contributed routes), primarily for cache inspection/debugging.
-
-## Requirements
-
-PHP 8.4+ (the `Hit\Attribute\RouteAttribute` interface uses property hooks).
+| `route` | `RouteDefinition` | Canonical matched definition |
+| `params` | `array` | Named regex captures |
+| `action` | `string` | Forwarded from `route` |
+| `accept` | `int` | Forwarded from `route` |
+| `acl` | `int` | Forwarded from `route` |
 
 ## Testing
 
 ```bash
 vendor/bin/pest tests/Unit/RouteTest.php tests/Unit/DiscoveryTest.php
 ```
-
-`DiscoveryTest.php` uses fixture Action classes under `tests/Fixtures/Action/` and an in-memory `StoreInterface` fake to exercise directory scanning, attribute reflection, ACL filtering, and cache-skip behavior without touching a real cache backend.

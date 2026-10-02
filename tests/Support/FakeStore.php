@@ -12,16 +12,21 @@ use Hit\Cache\Store\StoreInterface;
  */
 class FakeStore implements StoreInterface {
 	private array $store = [];
+	public int $gets = 0;
+	public int $sets = 0;
 
 	public function exists(string $key): bool {
 		return array_key_exists($key, $this->store);
 	}
 
 	public function get(string $key): mixed {
+		$this->gets++;
+
 		return $this->store[$key] ?? null;
 	}
 
 	public function set(string $key, array|string $value, int $expires = 0): bool {
+		$this->sets++;
 		$this->store[$key] = $value;
 
 		return true;

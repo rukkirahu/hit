@@ -4,21 +4,30 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use Hit\Attribute\Acl;
 use Hit\Router\Route;
-use Hit\Router\Routes\Routing;
+use Hit\Router\Routes\RouteDefinition;
+use Hit\Router\Routes\RouteMatch;
+use Hit\Router\Routes\RouteTable;
+use InvalidArgumentException;
+use RuntimeException;
+
+function route_table(RouteDefinition ...$routes): RouteTable {
+	return new RouteTable(...$routes);
+}
 
 // ---------------------------------------------------------------------------
 // Empty / default state
 // ---------------------------------------------------------------------------
 
 test('map returns null when no routes are configured', function () {
-	$route = new Route();
+	$route = new Route(route_table());
 
 	expect($route->map('GET', '/'))->toBeNull();
 });
 
 test('map returns null for unknown HTTP method', function () {
-	$route = new Route(['GET' => ['users' => ['action' => 'index', 'accept' => 1, 'acl' => 0]]], '/');
+	$route = new Route(route_table(new RouteDefinition('GET', 'users', 'index', 1, Acl::NONE)));
 
 	expect($route->map('PATCH', '/users'))->toBeNull();
 });
@@ -27,73 +36,52 @@ test('map returns null for unknown HTTP method', function () {
 // Basic routing
 // ---------------------------------------------------------------------------
 
-test('map matches a simple GET route', function () {
-	$route = new Route([
-		'GET' => [
-			'users' => ['action' => 'users.list', 'accept' => 1, 'acl' => 0],
-		],
-	], '/');
+test('map returns a typed match with forwarded route metadata', function () {
+	$definition = new RouteDefinition('GET', 'users', 'users.list', 1, Acl::NONE);
+	$route = new Route(route_table($definition));
 
 	$result = $route->map('GET', '/users');
 
-	expect($result)->toBeInstanceOf(Routing::class);
-	expect($result->action)->toBe('users.list');
-	expect($result->isDefault)->toBeFalse();
-	expect($result->params)->toBe([]);
-	expect($result->accept)->toBe(1);
-	expect($result->acl)->toBe(0);
+	expect($result)
+		->toBeInstanceOf(RouteMatch::class)
+		->and($result->route)
+		->toBe($definition)
+		->and($result->action)
+		->toBe('users.list')
+		->and($result->accept)
+		->toBe(1)
+		->and($result->acl)
+		->toBe(Acl::NONE)
+		->and($result->params)
+		->toBe([]);
 });
 
 test('map matches a POST route', function () {
-	$route = new Route([
-		'POST' => [
-			'users' => ['action' => 'users.create', 'accept' => 1, 'acl' => 1],
-		],
-	], '/');
+	$route = new Route(route_table(new RouteDefinition('POST', 'users', 'users.create', 1, Acl::NONE)));
 
-	$result = $route->map('POST', '/users');
-
-	expect($result)->not->toBeNull();
-	expect($result->action)->toBe('users.create');
+	expect($route->map('POST', '/users')?->action)->toBe('users.create');
 });
 
 test('map returns null when no route matches the path', function () {
-	$route = new Route([
-		'GET' => [
-			'users' => ['action' => 'users.list', 'accept' => 1, 'acl' => 0],
-		],
-	], '/');
+	$route = new Route(route_table(new RouteDefinition('GET', 'users', 'users.list', 1, Acl::NONE)));
 
 	expect($route->map('GET', '/orders'))->toBeNull();
 });
 
 // ---------------------------------------------------------------------------
-// Default route (empty path on GET)
+// Explicit base route
 // ---------------------------------------------------------------------------
 
-test('empty GET path returns the first route as default', function () {
-	$route = new Route([
-		'GET' => [
-			'home' => ['action' => 'home', 'accept' => 1, 'acl' => 0],
-		],
-	], '/');
+test('empty URI explicitly matches the base path', function () {
+	$route = new Route(route_table(new RouteDefinition('GET', '', 'home', 1, Acl::NONE)));
 
-	$result = $route->map('GET', '/');
-
-	expect($result)->toBeInstanceOf(Routing::class);
-	expect($result->isDefault)->toBeTrue();
-	expect($result->action)->toBe('home');
-	expect($result->params)->toBe([]);
+	expect($route->map('GET', '/')?->action)->toBe('home');
 });
 
-test('empty path on non-GET method does not use default route', function () {
-	$route = new Route([
-		'POST' => [
-			'submit' => ['action' => 'submit', 'accept' => 1, 'acl' => 0],
-		],
-	], '/');
+test('a non-empty route is not used as an implicit default', function () {
+	$route = new Route(route_table(new RouteDefinition('GET', 'home', 'home', 1, Acl::NONE)));
 
-	expect($route->map('POST', '/'))->toBeNull();
+	expect($route->map('GET', '/'))->toBeNull();
 });
 
 // ---------------------------------------------------------------------------
@@ -101,114 +89,78 @@ test('empty path on non-GET method does not use default route', function () {
 // ---------------------------------------------------------------------------
 
 test('map extracts named params from regex routes', function () {
-	$route = new Route([
-		'GET' => [
-			'users/(?<id>\d+)' => ['action' => 'users.show', 'accept' => 1, 'acl' => 0],
-		],
-	], '/');
+	$route = new Route(route_table(new RouteDefinition('GET', 'users/(?<id>\d+)', 'users.show', 1, Acl::NONE)));
 
 	$result = $route->map('GET', '/users/42');
 
-	expect($result)->not->toBeNull();
-	expect($result->action)->toBe('users.show');
-	expect($result->params)->toBe(['id' => '42']);
+	expect($result?->action)->toBe('users.show')->and($result?->params)->toBe(['id' => '42']);
 });
 
-test('map returns null when regex does not match', function () {
-	$route = new Route([
-		'GET' => [
-			'users/(?<id>\d+)' => ['action' => 'users.show', 'accept' => 1, 'acl' => 0],
-		],
-	], '/');
+test('invalid route regex is rejected during router construction', function () {
+	$table = route_table(new RouteDefinition('GET', '[', 'invalid', 1, Acl::NONE));
 
-	expect($route->map('GET', '/users/abc'))->toBeNull();
+	expect(fn() => new Route($table))->toThrow(InvalidArgumentException::class);
+});
+
+// ---------------------------------------------------------------------------
+// ACL filtering
+// ---------------------------------------------------------------------------
+
+test('public routes match without a caller ACL', function () {
+	$route = new Route(route_table(new RouteDefinition('GET', 'public', 'public', 1, Acl::NONE)));
+
+	expect($route->map('GET', '/public')?->action)->toBe('public');
+});
+
+test('protected routes do not match an insufficient caller ACL', function () {
+	$route = new Route(route_table(new RouteDefinition('GET', 'users', 'users', 1, Acl::USER)));
+
+	expect($route->map('GET', '/users', Acl::GUEST))->toBeNull();
+});
+
+test('protected routes match a sufficient caller ACL', function () {
+	$route = new Route(route_table(new RouteDefinition('GET', 'users', 'users', 1, Acl::USER)));
+
+	expect($route->map('GET', '/users', Acl::USER | Acl::ADMIN)?->action)->toBe('users');
 });
 
 // ---------------------------------------------------------------------------
 // Base path
 // ---------------------------------------------------------------------------
 
-test('base path is stripped before matching', function () {
-	$route = new Route([
-		'GET' => [
-			'users' => ['action' => 'users.list', 'accept' => 1, 'acl' => 0],
-		],
-	], '/api/');
+test('base path is included in matching', function () {
+	$route = new Route(route_table(new RouteDefinition('GET', 'users', 'users.list', 1, Acl::NONE)), '/api/');
 
-	$result = $route->map('GET', '/api/users');
-
-	expect($result)->not->toBeNull();
-	expect($result->action)->toBe('users.list');
+	expect($route->map('GET', '/api/users')?->action)->toBe('users.list')->and($route->map('GET', '/users'))->toBeNull();
 });
 
 test('base path with dot is escaped in regex', function () {
-	$route = new Route([
-		'GET' => [
-			'items' => ['action' => 'items.list', 'accept' => 1, 'acl' => 0],
-		],
-	], '/api/v2.0/');
+	$route = new Route(route_table(new RouteDefinition('GET', 'items', 'items.list', 1, Acl::NONE)), '/api/v2.0/');
 
-	// '/api/v2X0/items' should NOT match because the dot is escaped.
-	expect($route->map('GET', '/api/v2X0/items'))->toBeNull();
-
-	// '/api/v2.0/items' should match.
-	$result = $route->map('GET', '/api/v2.0/items');
-	expect($result)->not->toBeNull();
-	expect($result->action)->toBe('items.list');
+	expect($route->map('GET', '/api/v2X0/items'))->toBeNull()->and($route->map('GET', '/api/v2.0/items')?->action)->toBe('items.list');
 });
 
 // ---------------------------------------------------------------------------
 // Base path validation
 // ---------------------------------------------------------------------------
 
-test('constructor throws when base does not start with slash', function () {
-	expect(fn() => new Route([], 'api/'))->toThrow(\Exception::class);
-});
-
-test('constructor throws when base does not end with slash', function () {
-	expect(fn() => new Route([], '/api'))->toThrow(\Exception::class);
-});
-
-test('constructor accepts base that starts and ends with slash', function () {
-	expect(fn() => new Route([], '/api/'))->not->toThrow(\Exception::class);
-});
+test('constructor rejects invalid base paths', function (string $base) {
+	expect(fn() => new Route(route_table(), $base))->toThrow(InvalidArgumentException::class);
+})->with(['', 'api/', '/api']);
 
 // ---------------------------------------------------------------------------
-// Trailing slash handling
+// Route table validation
 // ---------------------------------------------------------------------------
 
-test('trailing slash is not trimmed before matching', function () {
-	$route = new Route([
-		'GET' => [
-			'users' => ['action' => 'users.list', 'accept' => 1, 'acl' => 0],
-		],
-	], '/');
-
-	expect($route->map('GET', '/users/'))->toBeNull();
+test('duplicate method and URI definitions are rejected', function () {
+	expect(fn() => route_table(new RouteDefinition('GET', 'users', 'first', 1, Acl::NONE), new RouteDefinition('GET', 'users', 'second', 1, Acl::NONE)))
+		->toThrow(RuntimeException::class);
 });
 
-// ---------------------------------------------------------------------------
-// Default constructor args
-// ---------------------------------------------------------------------------
-
-test('default base is a single slash', function () {
-	// With the default base '/', route URL keys should not repeat the
-	// leading slash (matching becomes base + url), so a bare path segment
-	// is used here instead of '/users'.
-	$route = new Route([
-		'GET' => [
-			'users' => ['action' => 'users.list', 'accept' => 1, 'acl' => 0],
-		],
-	]);
-
-	$result = $route->map('GET', '/users');
-
-	expect($result)->not->toBeNull();
-	expect($result->action)->toBe('users.list');
+test('route definitions reject leading slash URIs', function () {
+	expect(fn() => new RouteDefinition('GET', '/users', 'users', 1, Acl::NONE))->toThrow(InvalidArgumentException::class);
 });
 
-test('empty routes array and default base return null', function () {
-	$route = new Route();
-
-	expect($route->map('GET', '/anything'))->toBeNull();
+test('route tables validate serialized cache data', function () {
+	expect(fn() => RouteTable::fromArray([['method' => 'GET']]))->toThrow(RuntimeException::class);
 });

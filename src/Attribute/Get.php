@@ -6,7 +6,7 @@ namespace Hit\Attribute;
 
 use Attribute;
 
-#[Attribute(Attribute::TARGET_CLASS | Attribute::IS_REPEATABLE)]
+#[Attribute(Attribute::TARGET_CLASS)]
 final class Get implements RouteAttribute {
 	public string $method;
 

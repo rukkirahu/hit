@@ -13,8 +13,8 @@ Project notes (`Hit`).
 | `Hit\Container` | PSR-11 DI container with autowiring + optional reflection cache. | `Container` |
 | `Hit\Db` | Typed MySQL query builder over PDO, built around Domains + DTOs. | `Database`, `Dto`, `Query`, `Query\{Get,Select,Insert,Update,Delete,Scalar,Distinct,Listing,Index}` |
 | `Hit\Domain` | Table layer wiring `Database` to DTO lifecycle hooks. | `Domain` (extend; set `const TABLE`) |
-| `Hit\Router` | Regex router + attribute-based route discovery. | `Route`, `Discovery`, `Routes\Routing` |
-| `Hit\Attribute` | Route/ACL attributes for discovery. | `#[Get]` `#[Post]` `#[Put]` `#[Delete]` `#[Acl]` `#[Accept]` |
+| `Hit\Router` | Regex router + attribute-based route discovery. | `Route`, `Discovery`, `Routes\{RouteDefinition,RouteTable,RouteMatch}` |
+| `Hit\Attribute` | Route attributes and ACL/accept bitmasks. | `#[Get]` `#[Post]` `#[Put]` `#[Delete]`, `Acl`, `Accept` |
 | `Hit\Middleware` | PSR-15 middleware stack. | `Middleware` (extend), `Runner` |
 | `Hit\Validator` | Attribute-driven DTO validation. | `#[Rule(...)]`, `Validator::check($dto)`, `Validation` |
 | `Hit\View` | Base view (capture + minify) and HTML/Form/Table/Pager helpers. | `View` (extend), `Component\{Html,Form,Table}`, `Pager` |

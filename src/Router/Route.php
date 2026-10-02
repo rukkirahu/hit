@@ -4,55 +4,64 @@ declare(strict_types=1);
 
 namespace Hit\Router;
 
-use Exception;
-use Hit\Router\Routes\Routing;
+use Hit\Attribute\Acl;
+use Hit\Router\Routes\CompiledRoute;
+use Hit\Router\Routes\RouteMatch;
+use Hit\Router\Routes\RouteTable;
+use InvalidArgumentException;
+use RuntimeException;
 
-/**
- * Class Route
- * @package Hit\Router
- */
 class Route {
+	/** @var array<string, list<CompiledRoute>> */
+	private array $routes = [];
+
 	public function __construct(
-		/** @var array<string, array<string, array{action: string, accept: int, acl: int}>> */
-		private array $routes = [],
+		RouteTable $routes,
 		private string $base = '/',
 	) {
-		if ($this->base[0] !== '/' || $this->base[strlen($this->base) - 1] !== '/') {
-			throw new Exception('Base path must start and end with slash');
+		if ($this->base === '' || $this->base[0] !== '/' || $this->base[strlen($this->base) - 1] !== '/') {
+			throw new InvalidArgumentException('Base path must start and end with slash');
+		}
+
+		foreach (['GET', 'POST', 'PUT', 'DELETE'] as $method) {
+			foreach ($routes->forMethod($method) as $definition) {
+				$pattern = '~^' . preg_quote($this->base, '~') . str_replace('~', '\\~', $definition->uri) . '$~';
+				if (!$this->isValidPattern($pattern)) {
+					throw new InvalidArgumentException("Invalid route pattern: {$definition->uri}");
+				}
+				$this->routes[$method][] = new CompiledRoute($definition, $pattern);
+			}
 		}
 	}
 
-	public function map(string $method, string $path): ?Routing {
-		/** @var array<string, array{action: string, accept: int, acl: int}> $routes */
-		$routes = $this->routes[$method] ?? [];
+	private function isValidPattern(string $pattern): bool {
+		set_error_handler(static fn(): bool => true);
+		try {
+			return preg_match($pattern, '') !== false;
+		}
+		finally {
+			restore_error_handler();
+		}
+	}
 
-		if ($routes === []) {
+	public function map(string $method, string $path, int $acl = Acl::NONE): ?RouteMatch {
+		if (!str_starts_with($path, $this->base)) {
 			return null;
 		}
 
-		if (str_starts_with($path, $this->base)) {
-			$path = substr($path, strlen($this->base));
-		}
-
-		// if url is empty, match always and use default route
-		if ($path === '' && $method === 'GET') {
-			$first = $routes[array_key_first($routes)];
-
-			return new Routing(...$first, params: [], isDefault: true);
-		}
-
-		$escapedBase = preg_quote($this->base, '/');
-
-		foreach ($routes as $url => $route) {
-			$matches = [];
-			$pattern = '/^' . $escapedBase . str_replace('/', '\/', $url) . '$/';
-			$preg = preg_match($pattern, $this->base . $path, $matches);
-
-			if ($preg === 1) {
-				return new Routing(...$route, params: array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY), isDefault: false);
+		foreach ($this->routes[$method] ?? [] as $route) {
+			$definition = $route->definition;
+			if ($definition->acl !== Acl::NONE && ($acl & $definition->acl) === 0) {
+				continue;
 			}
-			if ($preg === false) {
-				throw new Exception('Incorrect routing regexp: ' . $url);
+
+			$matches = [];
+			$matched = preg_match($route->pattern, $path, $matches);
+			if ($matched === 1) {
+				return new RouteMatch($definition, array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY));
+			}
+			if ($matched === false) {
+				throw new RuntimeException("Invalid route pattern: {$definition->uri}");
 			}
 		}
 
