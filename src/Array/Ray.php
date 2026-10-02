@@ -226,7 +226,7 @@ class Ray {
 				list($destKey, $value) = (array) $destKey($key, $array);
 			}
 			else {
-				$value = self::get($array, is_int($key) ? (string) $destKey : $key);
+				$value = self::get($array, is_int($key) ?  $destKey : $key);
 			}
 
 			if (!($ignoreNullValues && is_null($value))) {
