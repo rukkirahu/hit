@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use Hit\Attribute\Acl;
+use Hit\Router\Discovery;
 use Hit\Router\Route;
+use Hit\Router\Routes\CompiledRoute;
 use Hit\Router\Routes\RouteDefinition;
 use Hit\Router\Routes\RouteMatch;
 use Hit\Router\Routes\RouteTable;
@@ -13,7 +15,11 @@ use InvalidArgumentException;
 use RuntimeException;
 
 function route_table(RouteDefinition ...$routes): RouteTable {
-	return new RouteTable(...$routes);
+	return based_route_table('/', ...$routes);
+}
+
+function based_route_table(string $base, RouteDefinition ...$routes): RouteTable {
+	return new RouteTable($base, ...array_map(fn(RouteDefinition $route): CompiledRoute => CompiledRoute::compile($route, $base), $routes));
 }
 
 // ---------------------------------------------------------------------------
@@ -96,10 +102,8 @@ test('map extracts named params from regex routes', function () {
 	expect($result?->action)->toBe('users.show')->and($result?->params)->toBe(['id' => '42']);
 });
 
-test('invalid route regex is rejected during router construction', function () {
-	$table = route_table(new RouteDefinition('GET', '[', 'invalid', 1, Acl::NONE));
-
-	expect(fn() => new Route($table))->toThrow(InvalidArgumentException::class);
+test('invalid route regex is rejected during route compilation', function () {
+	expect(fn() => route_table(new RouteDefinition('GET', '[', 'invalid', 1, Acl::NONE)))->toThrow(InvalidArgumentException::class);
 });
 
 // ---------------------------------------------------------------------------
@@ -129,13 +133,13 @@ test('protected routes match a sufficient caller ACL', function () {
 // ---------------------------------------------------------------------------
 
 test('base path is included in matching', function () {
-	$route = new Route(route_table(new RouteDefinition('GET', 'users', 'users.list', 1, Acl::NONE)), '/api/');
+	$route = new Route(based_route_table('/api/', new RouteDefinition('GET', 'users', 'users.list', 1, Acl::NONE)));
 
 	expect($route->map('GET', '/api/users')?->action)->toBe('users.list')->and($route->map('GET', '/users'))->toBeNull();
 });
 
 test('base path with dot is escaped in regex', function () {
-	$route = new Route(route_table(new RouteDefinition('GET', 'items', 'items.list', 1, Acl::NONE)), '/api/v2.0/');
+	$route = new Route(based_route_table('/api/v2.0/', new RouteDefinition('GET', 'items', 'items.list', 1, Acl::NONE)));
 
 	expect($route->map('GET', '/api/v2X0/items'))->toBeNull()->and($route->map('GET', '/api/v2.0/items')?->action)->toBe('items.list');
 });
@@ -144,8 +148,8 @@ test('base path with dot is escaped in regex', function () {
 // Base path validation
 // ---------------------------------------------------------------------------
 
-test('constructor rejects invalid base paths', function (string $base) {
-	expect(fn() => new Route(route_table(), $base))->toThrow(InvalidArgumentException::class);
+test('discovery rejects invalid base paths', function (string $base) {
+	expect(fn() => new Discovery('', '', base: $base))->toThrow(InvalidArgumentException::class);
 })->with(['', 'api/', '/api']);
 
 // ---------------------------------------------------------------------------

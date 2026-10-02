@@ -4,10 +4,10 @@ Regex-based HTTP router with attribute discovery, typed route definitions, reque
 
 ## Components
 
-- **`Discovery`** scans the application's `Action` directory and returns a `RouteTable`.
-- **`RouteTable`** contains validated `RouteDefinition` objects indexed by method and URI.
+- **`Discovery`** scans the application's `Action` directory, compiles base-aware route patterns, and returns a `RouteTable`.
+- **`RouteTable`** contains matcher-ready routes indexed by method and URI.
 - **`RouteDefinition`** describes one route: method, URI, action class, accept mask, and ACL mask.
-- **`Route`** matches a request method, path, and caller ACL against a `RouteTable`.
+- **`Route`** directly matches a request method, path, and caller ACL against a prepared `RouteTable`.
 - **`RouteMatch`** contains the matched definition and named regex parameters. Its `action`, `accept`, and `acl` properties forward to the definition.
 
 ## Action routes
@@ -50,20 +50,21 @@ use Hit\Router\Discovery;
 $table = new Discovery(
 	rootPath: __DIR__ . '/src',
 	namespace: 'App',
+	base: '/api/',
 	cache: $cache,
 	development: false,
 )->discover();
 ```
 
-`rootPath` is the parent directory of `Action`, and `namespace` is the namespace corresponding to that root. Directories and PHP class files beneath `Action` must start with an uppercase letter.
+`rootPath` is the parent directory of `Action`, and `namespace` is the namespace corresponding to that root. Directories and PHP class files beneath `Action` must start with an uppercase letter. The base path defaults to `/` and must start and end with `/`.
 
 ### Cache behavior
 
 Development mode always scans and reflects the source tree. It does not read or write cache entries.
 
-Production mode reads one complete, versioned route-table cache entry. A cache hit performs no filesystem scan or reflection. On a miss, Discovery scans all Actions and writes the complete table with a 30-day TTL. Passing `null` as the cache store disables caching.
+Production mode reads one complete, versioned route-table cache entry containing the final regex patterns. A cache hit performs no filesystem scan, reflection, pattern construction, or regex validation. On a miss, Discovery scans all Actions, compiles and validates their patterns, and writes the matcher-ready table with a 30-day TTL. Passing `null` as the cache store disables caching.
 
-The cache key includes the discovery root and namespace, allowing multiple applications or source roots to share a store safely.
+The cache key includes the discovery root, namespace, and base path, allowing applications with different routing configurations to share a store safely.
 
 ## Matching
 
@@ -71,7 +72,7 @@ The cache key includes the discovery root and namespace, allowing multiple appli
 use Hit\Attribute\Acl;
 use Hit\Router\Route;
 
-$router = new Route($table, '/api/');
+$router = new Route($table);
 $match = $router->map('GET', '/api/users/42', Acl::USER);
 
 $match?->action;       // App\Action\GetUserAction
@@ -95,11 +96,11 @@ The base path must start and end with `/`. Route URIs are appended directly to i
 
 ### `Discovery::discover(): RouteTable`
 
-Returns the discovered or cached typed route table.
+Returns the discovered or cached matcher-ready route table. Discovery validates the base path and compiles route regexes before caching.
 
-### `new Route(RouteTable $routes, string $base = '/')`
+### `new Route(RouteTable $routes)`
 
-Creates a matcher and validates all route regexes. Invalid base paths or route regexes throw `InvalidArgumentException`.
+Creates a matcher over the prepared table without rebuilding or revalidating route patterns.
 
 ### `Route::map(string $method, string $path, int $acl = Acl::NONE): ?RouteMatch`
 

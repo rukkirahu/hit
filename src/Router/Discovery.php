@@ -6,22 +6,29 @@ namespace Hit\Router;
 
 use Hit\Attribute\RouteAttribute;
 use Hit\Cache\Store\StoreInterface;
+use Hit\Router\Routes\CompiledRoute;
 use Hit\Router\Routes\RouteDefinition;
 use Hit\Router\Routes\RouteTable;
+use InvalidArgumentException;
 use ReflectionAttribute;
 use ReflectionClass;
 use RuntimeException;
 
 class Discovery {
-	private const CACHE_VERSION = 1;
+	private const CACHE_VERSION = 2;
 	private const CACHE_TTL = 2_592_000;
 
 	public function __construct(
 		private string $rootPath,
 		private string $namespace,
+		private string $base = '/',
 		private ?StoreInterface $cache = null,
 		private bool $development = false,
-	) {}
+	) {
+		if ($this->base === '' || $this->base[0] !== '/' || $this->base[strlen($this->base) - 1] !== '/') {
+			throw new InvalidArgumentException('Base path must start and end with slash');
+		}
+	}
 
 	public function discover(): RouteTable {
 		$key = $this->cacheKey();
@@ -36,7 +43,7 @@ class Discovery {
 		/** @var list<RouteDefinition> $routes */
 		$routes = [];
 		$this->discoverPath($this->rootPath, 'Action', $this->namespace, $routes);
-		$table = new RouteTable(...$routes);
+		$table = new RouteTable($this->base, ...array_map(fn(RouteDefinition $route): CompiledRoute => CompiledRoute::compile($route, $this->base), $routes));
 
 		if (!$this->development && $this->cache !== null && !$this->cache->set($key, $table->toArray(), self::CACHE_TTL)) {
 			throw new RuntimeException('Failed to cache routes');
@@ -46,7 +53,7 @@ class Discovery {
 	}
 
 	private function cacheKey(): string {
-		return 'router/routes/v' . self::CACHE_VERSION . '/' . sha1($this->rootPath . "\0" . $this->namespace);
+		return 'router/routes/v' . self::CACHE_VERSION . '/' . sha1($this->rootPath . "\0" . $this->namespace . "\0" . $this->base);
 	}
 
 	/** @param list<RouteDefinition> $routes */

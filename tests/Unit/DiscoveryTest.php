@@ -7,6 +7,7 @@ namespace Tests\Unit;
 use Hit\Attribute\Accept;
 use Hit\Attribute\Acl;
 use Hit\Router\Discovery;
+use Hit\Router\Route;
 use Hit\Router\Routes\RouteTable;
 use InvalidArgumentException;
 use RuntimeException;
@@ -79,7 +80,7 @@ test('an action cannot declare multiple route attributes', function () {
 
 test('production discovery uses one cached route table after the first scan', function () {
 	$cache = new FakeStore();
-	$discovery = new Discovery(fixtures_root(), 'Tests\\Fixtures', $cache);
+	$discovery = new Discovery(fixtures_root(), 'Tests\\Fixtures', cache: $cache);
 
 	$first = $discovery->discover();
 	$second = $discovery->discover();
@@ -92,9 +93,28 @@ test('production discovery uses one cached route table after the first scan', fu
 		->toBe(1);
 });
 
+test('discovery prepares patterns for its configured base path', function () {
+	$table = new Discovery(fixtures_root(), 'Tests\\Fixtures', base: '/api/', development: true)->discover();
+	$route = new Route($table);
+
+	expect($route->map('GET', '/api/sample', Acl::USER)?->action)
+		->toBe(SampleGetAction::class)
+		->and($route->map('GET', '/sample', Acl::USER))
+		->toBeNull();
+});
+
+test('base path is part of the production cache identity', function () {
+	$cache = new FakeStore();
+
+	new Discovery(fixtures_root(), 'Tests\\Fixtures', '/', $cache)->discover();
+	new Discovery(fixtures_root(), 'Tests\\Fixtures', '/api/', $cache)->discover();
+
+	expect($cache->sets)->toBe(2);
+});
+
 test('development discovery bypasses cache reads and writes', function () {
 	$cache = new FakeStore();
-	$discovery = new Discovery(fixtures_root(), 'Tests\\Fixtures', $cache, development: true);
+	$discovery = new Discovery(fixtures_root(), 'Tests\\Fixtures', cache: $cache, development: true);
 
 	$discovery->discover();
 	$discovery->discover();
