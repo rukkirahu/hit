@@ -20,7 +20,7 @@ class Container implements ContainerInterface {
 	/** @var array<string, callable> */
 	private array $definitions = [];
 
-	/** @var array<string, mixed> */
+	/** @var array<string, object> */
 	private array $instances = [];
 
 	/** @var array<string, array{class: class-string, dependencies: array<string, string|null>, defaults: array<string, mixed>}> */
@@ -66,7 +66,7 @@ class Container implements ContainerInterface {
 	 * @return bool True if the entry exists, false otherwise.
 	 */
 	public function isset(string $id): bool {
-		return isset($this->instances[$id]);
+		return array_key_exists($id, $this->instances);
 	}
 
 	/**
@@ -77,17 +77,21 @@ class Container implements ContainerInterface {
 	 * @throws NotFoundException No entry was found for this identifier.
 	 * @throws ContainerException Error while retrieving the entry (circular dependency, build failure, etc).
 	 *
-	 * @return mixed Entry.
+	 * @return object Entry.
 	 */
-	public function get(string $id): mixed {
+	public function get(string $id): object {
 		// Singleton: Return existing instance
 		if (array_key_exists($id, $this->instances)) {
 			return $this->instances[$id];
 		}
 
 		// Manual Definition: Execute factory
-		if (isset($this->definitions[$id])) {
-			$this->instances[$id] = $this->definitions[$id]($this);
+		if (array_key_exists($id, $this->definitions)) {
+			$obj = $this->definitions[$id]($this);
+			if (!is_object($obj)) {
+				throw new ContainerException("Factory for '{$id}' did not return an object");
+			}
+			$this->instances[$id] = $obj;
 
 			return $this->instances[$id];
 		}
@@ -100,7 +104,7 @@ class Container implements ContainerInterface {
 	 * Returns true if the container can return an entry for the given identifier.
 	 */
 	public function has(string $id): bool {
-		return isset($this->instances[$id]) || isset($this->definitions[$id]) || class_exists($id);
+		return array_key_exists($id, $this->instances) || array_key_exists($id, $this->definitions) || class_exists($id);
 	}
 
 	/**
@@ -146,37 +150,59 @@ class Container implements ContainerInterface {
 	 * Resolve a class using Reflection or cache.
 	 */
 	private function resolve(string $id): object {
-		if (!class_exists($id)) {
-			if (interface_exists($id)) {
-				throw new NotFoundException("Interface '{$id}' is not bound to an implementation. Use set() to register a concrete instance.");
-			}
-			throw new NotFoundException("Class or service '{$id}' not found.");
-		}
+		$this->assertExists($id);
+		$this->assertNotCircular($id);
 
 		/** @var class-string $id */
-
-		// Circular dependency detection
-		if (isset($this->resolving[$id])) {
-			$chain = implode(' -> ', array_keys($this->resolving)) . ' -> ' . $id;
-			throw new ContainerException("Circular dependency detected: {$chain}");
-		}
 
 		// Try cache first (only load once)
 		if (!$this->cacheLoaded) {
 			$this->loadCache();
 		}
 
-		if (isset($this->resolvedMeta[$id])) {
+		if (array_key_exists($id, $this->resolvedMeta)) {
 			return $this->buildFromCache($id);
 		}
 
-		// Full Reflection resolve (with circular detection)
+		return $this->resolveAndTrack($id);
+	}
+
+	/**
+	 * Mark the class as in-flight, then resolve via Reflection.
+	 * Pairs with assertNotCircular() for dependency-cycle detection.
+	 *
+	 * @param class-string $id
+	 */
+	private function resolveAndTrack(string $id): object {
 		$this->resolving[$id] = true;
 		try {
 			return $this->resolveWithReflection($id);
 		}
 		finally {
 			unset($this->resolving[$id]);
+		}
+	}
+
+	/**
+	 * Guard that the identifier is an existing class.
+	 */
+	private function assertExists(string $id): void {
+		if (class_exists($id)) {
+			return;
+		}
+		if (interface_exists($id)) {
+			throw new NotFoundException("Interface '{$id}' is not bound to an implementation. Use set() to register a concrete instance.");
+		}
+		throw new NotFoundException("Class or service '{$id}' not found.");
+	}
+
+	/**
+	 * Guard against circular dependency chains.
+	 */
+	private function assertNotCircular(string $id): void {
+		if (array_key_exists($id, $this->resolving)) {
+			$chain = implode(' -> ', array_keys($this->resolving)) . ' -> ' . $id;
+			throw new ContainerException("Circular dependency detected: {$chain}");
 		}
 	}
 

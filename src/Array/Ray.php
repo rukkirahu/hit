@@ -70,7 +70,7 @@ class Ray {
 			while (count($parts) > 1) {
 				$part = array_shift($parts);
 
-				if (isset($cursor[$part]) && is_array($cursor[$part])) {
+				if (array_key_exists($part, $cursor) && is_array($cursor[$part])) {
 					$cursor = &$cursor[$part];
 				}
 				else {
@@ -78,8 +78,12 @@ class Ray {
 				}
 			}
 
-			unset($cursor[array_shift($parts)]);
-			unset($cursor);
+			$lastPart = array_shift($parts);
+			if ($lastPart !== null) {
+				unset($cursor[$lastPart]);
+			}
+
+			// unset($cursor);
 		}
 	}
 
@@ -226,7 +230,7 @@ class Ray {
 				list($destKey, $value) = (array) $destKey($key, $array);
 			}
 			else {
-				$value = self::get($array, is_int($key) ?  $destKey : $key);
+				$value = self::get($array, is_int($key) ? $destKey : $key);
 			}
 
 			if (!($ignoreNullValues && is_null($value))) {

@@ -21,4 +21,12 @@ class Uuid {
 
 		return $dash ? vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4)) : bin2hex($data);
 	}
+
+	public static function isValid(string $uuid): bool {
+		if (strlen($uuid) !== 36 || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $uuid) !== 1) {
+			return false;
+		}
+
+		return true;
+	}
 }

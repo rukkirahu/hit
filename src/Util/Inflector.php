@@ -232,7 +232,7 @@ class Inflector {
 			case is_array($data):
 				$data = 'array: ' . (string) json_encode($data, $pretty ? JSON_PRETTY_PRINT : 0);
 				break;
-			// @mago-expect analysis:invalid-operand
+				// @mago-expect analysis:invalid-operand
 			case is_object($data):
 				$data =
 					'object['
@@ -255,7 +255,7 @@ class Inflector {
 			case is_string($data):
 				// @phpstan-ignore logicalAnd.resultUnused
 				strlen($data) > 500 and ($data = substr($data, 0, strrpos(substr($data, 0, 500), ' ') ?: 500) . '...');
-				$data = preg_replace('/\s+/', ' ', $pretty ? html_entity_decode(str_replace('&nbsp;', ' ', $data)) : $data);
+				$data = preg_replace('/\s+/', ' ', $pretty ? html_entity_decode((string) str_replace('&nbsp;', ' ', $data)) : $data);
 				break;
 			default:
 				$data = gettype($data);
